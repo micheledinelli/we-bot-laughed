@@ -177,8 +177,6 @@ func handleMessage(message *tgbotapi.Message, m *db.Mongo) {
 
 	var err error
 
-	// log.Printf("%s wrote %s", user.FirstName, text)
-
 	if strings.HasPrefix(text, "/") {
 		err = handleCommand(message.Chat.ID, text, m)
 	}

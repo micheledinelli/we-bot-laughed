@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"op-bot/utils"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -130,6 +131,7 @@ func (m *Mongo) GetLatestChapter() (*utils.Chapter, error) {
 			return nil, fmt.Errorf("no latest chapter found: %w", err)
 		}
 
+		log.Println(err)
 		return nil, utils.ErrorMongoFindOne
 	}
 

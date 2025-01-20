@@ -9,7 +9,7 @@
 
 <img src="ascii-art.png" width="500">
 
-While you're figuring out what the One Piece is, I can help by providing you with the latest chapter. Spoiler: Roger and I… we both laughed.
+While you're figuring out what the One Piece is, I can help by providing you with the latest chapter. By the way Roger and I... we both laughed.
 </div>
 
 > [!WARNING]  

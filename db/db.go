@@ -38,10 +38,6 @@ func InitDatabase(ctx context.Context, mongoUri string) (*Mongo, error) {
 	m.Client = client
 	m.DbInfo.DatabaseName = dbName
 
-	if err = client.Ping(ctx, nil); err != nil {
-		return nil, utils.ErrorDatabasePing
-	}
-
 	return m, nil
 }
 

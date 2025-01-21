@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"op-bot/utils"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -25,7 +26,12 @@ type DatabaseInfo struct {
 }
 
 func InitDatabase(ctx context.Context, mongoUri string) (*Mongo, error) {
-	opts := options.Client().ApplyURI(mongoUri)
+	opts := options.Client().ApplyURI(mongoUri).
+		SetConnectTimeout(30 * time.Second).
+		SetServerSelectionTimeout(30 * time.Second).
+		SetSocketTimeout(30 * time.Second).
+		SetMaxPoolSize(100).
+		SetMinPoolSize(1)
 
 	m := &Mongo{}
 

@@ -13,3 +13,9 @@ var ErrorMongoUpdateOne error = errors.New("failed to update one in database")
 
 var ErrorMongoCursor error = errors.New("failed to decode cursor")
 var ErrorGenericMongoCursor error = errors.New("failed to decode cursor")
+
+type EnvVariabaleNotFoundError error
+
+func NewEnvVariableNotFoundError(k string) error {
+	return errors.New("Couldn't find env variable for key " + k)
+}

@@ -33,12 +33,12 @@ func main() {
 	ctx, cancel := context.WithCancel(ctx)
 
 	if err = godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("Couldn't load .env file")
 	}
 
-	token := utils.StringOrPanic(os.Getenv("TELEGRAM_HTTP_API_TOKEN"))
-	scrapeUrl := utils.StringOrPanic(os.Getenv("SCRAPE_URL"))
-	mongoUri := utils.StringOrPanic(os.Getenv("MONGO_URI"))
+	token := utils.StringEnvOrPanic("TELEGRAM_HTTP_API_TOKEN")
+	scrapeUrl := utils.StringEnvOrPanic("SCRAPE_URL")
+	mongoUri := utils.StringEnvOrPanic("MONGO_URI")
 
 	if m, err = db.InitDatabase(ctx, mongoUri); err != nil {
 		log.Fatalf("Couldn't init database: %v", err)
@@ -54,7 +54,7 @@ func main() {
 		log.Fatalf("Couldn't init telegram bot: %v", err)
 	}
 
-	bot.Debug = os.Getenv("DEBUG") == "true"
+	bot.Debug = utils.BoolEnvOrPanic("DEBUG")
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60

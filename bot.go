@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -68,9 +66,17 @@ func main() {
 	go scrapeForOpContent(ctx, scrapeUrl, m, c)
 	go sendUpdates(ctx, m, c)
 
-	log.Println("Start listening for updates. Press enter to stop")
+	log.Println("Start listening for updates.")
 
-	bufio.NewReader(os.Stdin).ReadBytes('\n')
+	// Start http server for deploy, so the host doesn't kill it
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "Hello, World!")
+	})
+
+	if err = http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatalf("Couldn't start http server: %v", err)
+	}
+
 	cancel()
 }
 

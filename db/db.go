@@ -52,6 +52,7 @@ func (m *Mongo) GetUsers() (*[]int64, error) {
 	).Collection(usersCollection)
 
 	var result bson.M
+	var chatIds []int64
 
 	cursor, err := coll.Find(context.TODO(), bson.D{{}})
 	if err != nil {
@@ -61,20 +62,22 @@ func (m *Mongo) GetUsers() (*[]int64, error) {
 	defer cursor.Close(context.TODO())
 
 	for cursor.Next(context.TODO()) {
+		var chatId int64
+		var found bool
+		
 		if err := cursor.Decode(&result); err != nil {
 			return nil, utils.ErrorMongoCursor
 		}
+
+		if chatId, found = result["chat_id"].(int64); !found {
+			return nil, utils.ErrorMongoCursor
+		}
+		
+		chatIds = append(chatIds, chatId)
 	}
 
 	if err := cursor.Err(); err != nil {
 		return nil, utils.ErrorGenericMongoCursor
-	}
-
-	chatIds := make([]int64, 0)
-	for k, v := range result {
-		if k == "chat_id" {
-			chatIds = append(chatIds, v.(int64))
-		}
 	}
 
 	return &chatIds, nil

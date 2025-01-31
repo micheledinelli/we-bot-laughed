@@ -226,6 +226,7 @@ func sendStartMessage(chatId int64) error {
 }
 
 func sendOpIsOutMsg(chatId int64, url string) error {
+	// log.Printf("Sending message to chat id %d", chatId)
 	tokens := strings.Split(url, "-")
 	chapter := tokens[len(tokens)-1]
 	str := fmt.Sprintf("One Piece %s is out at %s", chapter, url)

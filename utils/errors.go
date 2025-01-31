@@ -13,6 +13,7 @@ var ErrorMongoUpdateOne error = errors.New("failed to update one in database")
 
 var ErrorMongoCursor error = errors.New("failed to decode cursor")
 var ErrorGenericMongoCursor error = errors.New("failed to decode cursor")
+var ErrorChatId = errors.New("failed to get chat id or convert it to int64")
 
 type EnvVariabaleNotFoundError error
 

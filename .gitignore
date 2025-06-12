@@ -1,4 +1,5 @@
 *.env
 *.txt
 
-app
+.DS_Store
+docker-compose.yaml

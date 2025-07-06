@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ import (
 var (
 	startMessage = "Started watching for one piece updates for you. You will be notified when a new chapter is out."
 	bot          *tgbotapi.BotAPI
+	log          = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 )
 
 func main() {
@@ -31,7 +33,8 @@ func main() {
 	ctx, cancel := context.WithCancel(ctx)
 
 	if err = godotenv.Load(); err != nil {
-		log.Println("Couldn't load .env file")
+		log.Error("Couldn't load .env file", "error", err)
+		panic(err)
 	}
 
 	token := utils.StringEnvOrPanic("TELEGRAM_HTTP_API_TOKEN")
@@ -39,7 +42,9 @@ func main() {
 	mongoUri := utils.StringEnvOrPanic("MONGO_URI")
 
 	if m, err = db.InitDatabase(ctx, mongoUri); err != nil {
-		log.Fatalf("Couldn't init database: %v", err)
+		// slog.Fatalf("Couldn't init database: %v", err)
+		slog.Error("Couldn't init database", "error", err)
+		panic(err)
 	}
 
 	defer func() {
@@ -49,7 +54,8 @@ func main() {
 	}()
 
 	if bot, err = tgbotapi.NewBotAPI(token); err != nil {
-		log.Fatalf("Couldn't init telegram bot: %v", err)
+		log.Error("Couldn't create bot", "error", err)
+		panic(err)
 	}
 
 	bot.Debug = utils.BoolEnvOrPanic("DEBUG")
@@ -66,15 +72,11 @@ func main() {
 	go scrapeForOpContent(ctx, scrapeUrl, m, c)
 	go sendUpdates(ctx, m, c)
 
-	log.Println("Start listening for updates.")
-
-	// Start http server for deploy, so the host doesn't kill it
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello, World!")
-	})
+	log.Info("Bot started", "username", bot.Self.UserName)
 
 	if err = http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatalf("Couldn't start http server: %v", err)
+		log.Error("Couldn't start HTTP server", "error", err)
+		panic(err)
 	}
 
 	cancel()
@@ -86,7 +88,7 @@ func scrapeForOpContent(ctx context.Context, url string, m *db.Mongo, c chan str
 		chapter := &utils.Chapter{}
 
 		if chapter, err = m.GetLatestChapter(); err != nil {
-			log.Fatalf("Couldn't get latest chapter: %v", err)
+			log.Error("Couldn't get latest chapter", "error", err)
 		}
 
 		var pattern string = `/chapters/\d+/one-piece-chapter-` +
@@ -109,7 +111,7 @@ func scrapeForOpContent(ctx context.Context, url string, m *db.Mongo, c chan str
 			if resp.StatusCode == http.StatusOK {
 				bodyBytes, err := io.ReadAll(resp.Body)
 				if err != nil {
-					log.Fatal(err)
+					log.Error("Couldn't read response body", "error", err)
 				}
 				bodyString := string(bodyBytes)
 
@@ -124,8 +126,8 @@ func scrapeForOpContent(ctx context.Context, url string, m *db.Mongo, c chan str
 
 		}
 
-		// Check every 2 hours
-		time.Sleep(2 * time.Hour)
+		// Check every hour
+		time.Sleep(time.Hour)
 	}
 }
 
@@ -153,7 +155,8 @@ func sendUpdates(ctx context.Context, m *db.Mongo, c chan string) {
 			var err error
 
 			if chatIds, err = m.GetUsers(); err != nil {
-				log.Fatalf("Couldn't get users: %v", err)
+				log.Error("Couldn't get users", "error", err)
+				continue
 			}
 
 			for _, chatId := range *chatIds {
@@ -169,7 +172,9 @@ func handleUpdate(update tgbotapi.Update, m *db.Mongo) {
 		handleMessage(update.Message, m)
 
 	default:
-		log.Printf("Unsupported update type: %T", update)
+		log.Info("Received an update that is not a message",
+			"update_id", update.UpdateID,
+			"update", update)
 	}
 }
 
@@ -188,30 +193,45 @@ func handleMessage(message *tgbotapi.Message, m *db.Mongo) {
 	}
 
 	if err != nil {
-		log.Printf("An error occured: %s", err.Error())
+		log.Error("Error handling message",
+			"chat_id", message.Chat.ID,
+			"message_id", message.MessageID,
+			"error", err)
 	}
 }
 
 func handleCommand(chatId int64, command string, m *db.Mongo) error {
 	var err error
 
+	log.Info("Received command",
+		"chat_id", chatId,
+		"command", command)
+
 	switch command {
 	case "/start":
 		if err = sendStartMessage(chatId); err != nil {
-			log.Fatalf("Couldn't send start message: %v", err)
+			log.Error("Couldn't send start message",
+				"chat_id", chatId,
+				"error", err)
 		}
 
 		if err = m.AddUser(chatId); err != nil {
-			log.Fatalf("Couldn't add user: %v", err)
+			log.Error("Couldn't add user",
+				"chat_id", chatId,
+				"error", err)
 		}
 
 		if err = sendLatestChapter(chatId, m); err != nil {
-			log.Fatalf("Couldn't send latest chapter: %v", err)
+			log.Error("Couldn't send latest chapter",
+				"chat_id", chatId,
+				"error", err)
 		}
 
 	case "/stop":
 		if err = m.RemoveUser(chatId); err != nil {
-			log.Fatalf("Couldn't remove user: %v", err)
+			log.Error("Couldn't remove user",
+				"chat_id", chatId,
+				"error", err)
 		}
 	}
 
@@ -226,7 +246,6 @@ func sendStartMessage(chatId int64) error {
 }
 
 func sendOpIsOutMsg(chatId int64, url string) error {
-	// log.Printf("Sending message to chat id %d", chatId)
 	tokens := strings.Split(url, "-")
 	chapter := tokens[len(tokens)-1]
 	str := fmt.Sprintf("One Piece %s is out at %s", chapter, url)
@@ -240,7 +259,7 @@ func sendLatestChapter(chatId int64, m *db.Mongo) error {
 	chapter := &utils.Chapter{}
 
 	if chapter, err = m.GetLatestChapter(); err != nil {
-		log.Fatalf("Couldn't get latest chapter: %v", err)
+		log.Error("Couldn't get latest chapter: %v", err)
 	}
 
 	str := fmt.Sprintf("Meanwhile you can read the latest chapter of One Piece at %s", chapter.Url)

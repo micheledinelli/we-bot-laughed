@@ -64,7 +64,7 @@ func (m *Mongo) GetUsers() (*[]int64, error) {
 	for cursor.Next(context.TODO()) {
 		var chatId int64
 		var found bool
-		
+
 		if err := cursor.Decode(&result); err != nil {
 			return nil, utils.ErrorMongoCursor
 		}
@@ -72,7 +72,7 @@ func (m *Mongo) GetUsers() (*[]int64, error) {
 		if chatId, found = result["chat_id"].(int64); !found {
 			return nil, utils.ErrorMongoCursor
 		}
-		
+
 		chatIds = append(chatIds, chatId)
 	}
 

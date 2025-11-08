@@ -1,4 +1,4 @@
-module op-bot
+module github.com/micheledinelli/we-bot-laughed
 
 go 1.23
 

@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"op-bot/utils"
 	"time"
+
+	"github.com/micheledinelli/we-bot-laughed/utils"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"

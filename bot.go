@@ -259,7 +259,8 @@ func sendLatestChapter(chatId int64, m *db.Mongo) error {
 	chapter := &utils.Chapter{}
 
 	if chapter, err = m.GetLatestChapter(); err != nil {
-		log.Error("Couldn't get latest chapter: %v", err)
+		log.Error("Couldn't get latest chapter", "error", err)
+		return err
 	}
 
 	str := fmt.Sprintf("Meanwhile you can read the latest chapter of One Piece at %s", chapter.Url)

@@ -34,7 +34,7 @@ func main() {
 	ctx, cancel := context.WithCancel(ctx)
 
 	if err = godotenv.Load(); err != nil {
-		log.Fatal().
+		log.Error().
 			Err(err).
 			Msgf(utils.ErrorLoadingEnv.Error())
 	}

@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,6 +12,8 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	"github.com/micheledinelli/we-bot-laughed/db"
 	"github.com/micheledinelli/we-bot-laughed/utils"
@@ -22,73 +22,68 @@ import (
 var (
 	startMessage = "Started watching for one piece updates for you. You will be notified when a new chapter is out."
 	bot          *tgbotapi.BotAPI
-	log          = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 )
 
 func main() {
 	var err error
-	var m *db.Mongo
+	var mongo *db.Mongo
+
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 
 	if err = godotenv.Load(); err != nil {
-		log.Error("Couldn't load .env file", "error", err)
-		panic(err)
+		log.Fatal().
+			Err(err).
+			Msgf(utils.ErrorLoadingEnv.Error())
 	}
 
 	token := utils.StringEnvOrPanic("TELEGRAM_HTTP_API_TOKEN")
 	scrapeUrl := utils.StringEnvOrPanic("SCRAPE_URL")
 	mongoUri := utils.StringEnvOrPanic("MONGO_URI")
 
-	if m, err = db.InitDatabase(ctx, mongoUri); err != nil {
-		// slog.Fatalf("Couldn't init database: %v", err)
-		slog.Error("Couldn't init database", "error", err)
-		panic(err)
+	if mongo, err = db.InitDatabase(ctx, mongoUri); err != nil {
+		cancel()
+		log.Fatal().Err(err).Msg(utils.ErrorDatabaseConnection.Error())
 	}
 
 	defer func() {
-		if err = m.Client.Disconnect(ctx); err != nil {
-			panic(err)
+		if err = mongo.Client.Disconnect(ctx); err != nil {
+			cancel()
+			log.Fatal().Err(err).Msg(utils.ErrorDatabaseDisConnection.Error())
 		}
 	}()
 
 	if bot, err = tgbotapi.NewBotAPI(token); err != nil {
-		log.Error("Couldn't create bot", "error", err)
-		panic(err)
+		cancel()
+		log.Fatal().Err(err).Msg(utils.ErrorCreatingBot.Error())
 	}
 
 	bot.Debug = utils.BoolEnvOrPanic("DEBUG")
-
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
-
 	updates := bot.GetUpdatesChan(u)
-
-	go receiveUpdates(ctx, updates, m)
 
 	c := make(chan string)
 
-	go scrapeForOpContent(ctx, scrapeUrl, m, c)
-	go sendUpdates(ctx, m, c)
+	go receiveUpdates(ctx, updates, mongo)
+	go scrapeTCB(ctx, scrapeUrl, mongo, c)
+	// go scrapeOPScans(ctx, mongo, c)
+	go sendUpdates(ctx, mongo, c)
 
-	log.Info("Bot started", "username", bot.Self.UserName)
+	log.Printf("bot %s started", bot.Self.UserName)
 
-	if err = http.ListenAndServe(":8080", nil); err != nil {
-		log.Error("Couldn't start HTTP server", "error", err)
-		panic(err)
-	}
-
-	cancel()
+	<-ctx.Done()
 }
 
-func scrapeForOpContent(ctx context.Context, url string, m *db.Mongo, c chan string) {
+func scrapeTCB(ctx context.Context, url string, m *db.Mongo, c chan string) {
 	for {
 		var err error
 		chapter := &utils.Chapter{}
 
 		if chapter, err = m.GetLatestChapter(); err != nil {
-			log.Error("Couldn't get latest chapter", "error", err)
+			log.Error().Err(err).Msg("Couldn't get the latest chapter")
 		}
 
 		var pattern string = `/chapters/\d+/one-piece-chapter-` +
@@ -105,29 +100,26 @@ func scrapeForOpContent(ctx context.Context, url string, m *db.Mongo, c chan str
 			var client http.Client
 
 			if resp, err = client.Get(url); err != nil {
-				panic(err)
+				log.Error().Err(err).Msgf("http protocol error host: %s", url)
 			}
 
 			if resp.StatusCode == http.StatusOK {
 				bodyBytes, err := io.ReadAll(resp.Body)
 				if err != nil {
-					log.Error("Couldn't read response body", "error", err)
+					log.Error().Err(err).Msg("couldn't read response body")
 				}
+
 				bodyString := string(bodyBytes)
-
 				match := re.FindString(bodyString)
-
 				if match != "" {
 					c <- url + match
-
 					m.UpdateLatestChapter(chapter.ChapterNumber, url+match)
 				}
 			}
-
 		}
 
-		// Check every hour
-		time.Sleep(time.Hour)
+		// Check every half an hour
+		time.Sleep(time.Hour / 2)
 	}
 }
 
@@ -155,12 +147,14 @@ func sendUpdates(ctx context.Context, m *db.Mongo, c chan string) {
 			var err error
 
 			if chatIds, err = m.GetUsers(); err != nil {
-				log.Error("Couldn't get users", "error", err)
+				log.Error().Err(err).Msg("couldn't get users")
 				continue
 			}
 
 			for _, chatId := range *chatIds {
-				sendOpIsOutMsg(chatId, url)
+				if err = sendOpIsOutMsg(chatId, url); err != nil {
+					log.Error().Err(err).Msg("error sending op is out msg")
+				}
 			}
 		}
 	}
@@ -172,13 +166,15 @@ func handleUpdate(update tgbotapi.Update, m *db.Mongo) {
 		handleMessage(update.Message, m)
 
 	default:
-		log.Info("Received an update that is not a message",
-			"update_id", update.UpdateID,
-			"update", update)
+		log.Info().
+			Int("update_id", update.UpdateID).
+			Str("update", update.Message.Text).
+			Msg("Received an update that is not a message")
 	}
 }
 
 func handleMessage(message *tgbotapi.Message, m *db.Mongo) {
+	var err error
 	user := message.From
 	text := message.Text
 
@@ -186,52 +182,66 @@ func handleMessage(message *tgbotapi.Message, m *db.Mongo) {
 		return
 	}
 
-	var err error
+	log.Info().
+		Int64("user_id", int64(user.ID)).
+		Str("username", user.UserName).
+		Str("first_name", user.FirstName).
+		Str("last_name", user.LastName).
+		Int64("chat_id", message.Chat.ID).
+		Int("message_id", message.MessageID).
+		Str("text", text).
+		Msg("Received a message")
 
 	if strings.HasPrefix(text, "/") {
 		err = handleCommand(message.Chat.ID, text, m)
 	}
 
 	if err != nil {
-		log.Error("Error handling message",
-			"chat_id", message.Chat.ID,
-			"message_id", message.MessageID,
-			"error", err)
+		log.Error().
+			Int64("chat_id", message.Chat.ID).
+			Int("message_id", message.MessageID).
+			Err(err).
+			Msg("Error handling message")
 	}
 }
 
 func handleCommand(chatId int64, command string, m *db.Mongo) error {
 	var err error
 
-	log.Info("Received command",
-		"chat_id", chatId,
-		"command", command)
+	log.Error().
+		Int64("chat_id", chatId).
+		Str("command", command).
+		Msg("received command")
 
 	switch command {
 	case "/start":
 		if err = sendStartMessage(chatId); err != nil {
-			log.Error("Couldn't send start message",
-				"chat_id", chatId,
-				"error", err)
+			log.Error().
+				Int64("chat_id", chatId).
+				Err(err).
+				Msg("couldn't send start message")
 		}
 
 		if err = m.AddUser(chatId); err != nil {
-			log.Error("Couldn't add user",
-				"chat_id", chatId,
-				"error", err)
+			log.Error().
+				Int64("chat_id", chatId).
+				Err(err).
+				Msg("couldn't add user")
 		}
 
 		if err = sendLatestChapter(chatId, m); err != nil {
-			log.Error("Couldn't send latest chapter",
-				"chat_id", chatId,
-				"error", err)
+			log.Error().
+				Int64("chat_id", chatId).
+				Err(err).
+				Msg("couldn't send latest chapter")
 		}
 
 	case "/stop":
 		if err = m.RemoveUser(chatId); err != nil {
-			log.Error("Couldn't remove user",
-				"chat_id", chatId,
-				"error", err)
+			log.Error().
+				Int64("chat_id", chatId).
+				Err(err).
+				Msg("couldn't remove user")
 		}
 	}
 
@@ -259,7 +269,9 @@ func sendLatestChapter(chatId int64, m *db.Mongo) error {
 	chapter := &utils.Chapter{}
 
 	if chapter, err = m.GetLatestChapter(); err != nil {
-		log.Error("Couldn't get latest chapter", "error", err)
+		log.Error().
+			Err(err).
+			Msg("couldn't get latest chapter")
 		return err
 	}
 

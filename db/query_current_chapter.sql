@@ -1,0 +1,1 @@
+SELECT chapter_number, url FROM chapters ORDER BY chapter_number DESC LIMIT 1

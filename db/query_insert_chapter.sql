@@ -1,0 +1,1 @@
+INSERT INTO chapters (chapter_number, url) VALUES (?, ?)

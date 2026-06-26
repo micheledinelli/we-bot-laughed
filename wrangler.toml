@@ -1,0 +1,19 @@
+name = "we-bot-laughed"
+main = "./build/worker.mjs"
+compatibility_date = "2026-06-21"
+workers_dev = false
+
+[build]
+command = "make build"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "we-bot-laughed"
+database_id = "f4a87000-c3df-4409-ba34-0627adb65523"
+
+[observability.logs]
+enabled = true
+invocation_logs = true

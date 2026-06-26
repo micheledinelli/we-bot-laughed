@@ -9,3 +9,5 @@ CREATE TABLE users (
     chat_id INTEGER PRIMARY KEY,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_chapters_chapter_number ON chapters(chapter_number DESC);

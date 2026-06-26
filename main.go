@@ -54,7 +54,7 @@ func scrapeTask(ctx context.Context) error {
 	e, err := cron.NewEvent(ctx)
 	log.Info().Msgf("Scrape task started at %d", e.ScheduledTime.Unix())
 
-	var scrapeUrl = "https://tcbonepiecechapters.com/"
+	var scrapeUrl = "https://tcbonepiecechapters.com"
 
 	db, err := sql.Open("d1", "DB")
 	if err != nil {
